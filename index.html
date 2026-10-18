@@ -2349,7 +2349,7 @@ const COUP = {
   title: "Der Cart-Coup",
   art: "coup",
   intro: "M sagt: „Ich übe noch kurz meinen Schwung, geh ruhig vor.“ Perfekt. Auf dem Platz stehen vier fremde Golf-Carts. In einem davon wartet eine Kühlbox mit Aperol. M läuft zu Fuß, und er ist langsam.",
-  how: ["Hummi ist beim Losrennen aus der Golftasche gefallen. Er sitzt irgendwo auf dem Platz und leuchtet. Einsammeln gibt 150 Punkte.", "Finger aufs Spielfeld legen und ziehen: L läuft dorthin (am Computer: Pfeiltasten).", "Im Gebüsch ist L unsichtbar. Die hellen Lichtkegel sind die Blicke der anderen Golfer und des Platzwarts.", "L zu einem Cart führen = Cart klauen. Mit dem Cart an ein anderes heranfahren = umsteigen.", "Ab zum orangen Zielfeld am Parkplatz von Loch 19, bevor Ms Balken unten voll ist."],
+  how: ["Hummi ist beim Losrennen aus der Golftasche gefallen. Er sitzt irgendwo auf dem Platz und leuchtet. Einsammeln gibt 150 Punkte.", "Finger aufs Spielfeld legen und ziehen: L läuft dorthin (am Computer: Pfeiltasten).", "Im Gebüsch ist L unsichtbar. Die hellen Lichtkegel sind die Blicke der anderen Golfer und des Platzwarts.", "L zu einem Cart führen = Cart klauen. Mit dem Cart an ein anderes heranfahren = umsteigen.", "Ab zum orangen Zielfeld am Parkplatz von Loch 19, bevor Ms Balken unten voll ist.", "Der gelbe Pfeil zeigt dir den Weg: erst zu Hummi, dann zum Aperol-Cart, zum Erpel und zum Ziel. Er kommt von selbst, und jederzeit wieder mit dem gelben „TIPP“-Knopf oben links (Taste H)."],
   init() {
     if (!courseBg) buildCourse();
     const contents = ["aperol", "iso", "erpel", "baelle"].sort(() => Math.random() - 0.5);
@@ -2372,6 +2372,9 @@ const COUP = {
     const h = hs[Math.floor(Math.random() * hs.length)];
     this.hummi = { x: h[0], y: h[1], got: false };
     hummiFound = false;
+    this.tipT = 0;
+    this.tipTo = null;
+    this.tipPending = true;
     radio("M", "Ich bleib noch hier und arbeite am Rückschwung. 50 Bälle, dann komm ich nach.");
   },
   blocked(x, y) {
@@ -2408,6 +2411,15 @@ const COUP = {
     this.swings += dt * 1.4;
     this.cool -= dt;
     this.toastT -= dt;
+    if (this.tipPending && this.tipT <= 0) {
+      this.tipPending = false;
+      this.tip();
+    }
+    if (this.tipT > 0) {
+      this.tipT -= dt;
+      const t = this.tipGoal();
+      if (this.tipTo) Object.assign(this.tipTo, t);
+    }
     this.wardS += this.wardDir * dt * 0.045;
     if (this.wardS > 0.82) {
       this.wardS = 0.82;
@@ -2447,6 +2459,8 @@ const COUP = {
     if (!this.hummi.got && Math.hypot(this.hummi.x - this.L.x, this.hummi.y - this.L.y) < 18) {
       this.hummi.got = true;
       hummiFound = true;
+      this.tipPending = true;
+      this.tipT = 0;
       addPts(150);
       sfx.fanfare();
       radio("Hummi", "(klettert erleichtert auf Ls Schulter)");
@@ -2478,6 +2492,8 @@ const COUP = {
     c.y = this.L.y;
     this.target = null;
     const first = !c.seen;
+    this.tipPending = true;
+    this.tipT = 0;
     if (first) {
       c.seen = true;
       addPts(c.c === "aperol" ? 200 : 40);
@@ -2519,7 +2535,37 @@ const COUP = {
     this.cartAtEnd = this.inCart ? this.inCart.c : null;
     endStation();
   },
+  tipGoal() {
+    const cartOf = (k) => this.carts.find((c) => c.c === k);
+    if (!this.hummi.got) return { x: this.hummi.x, y: this.hummi.y, lab: "HUMMI", who: "Hummi", txt: "(leuchtet und winkt) Hier bin ich! " + this.dir(this.hummi.x, this.hummi.y) + "." };
+    const ap = cartOf("aperol");
+    if (!(this.inCart && this.inCart.c === "aperol")) return { x: ap.x, y: ap.y, lab: "APEROL-CART", who: "Tipp", txt: "Das Aperol-Cart steht " + this.dir(ap.x, ap.y) + ". Kühlbox, Eis, alles da." };
+    const er = cartOf("erpel");
+    if (!er.seen) return { x: er.x, y: er.y, lab: "ERPEL", who: "Tipp", txt: "Im Cart " + this.dir(er.x, er.y) + " sitzt ein einsamer Erpel. Kurz vorbeifahren lohnt sich – danach wieder zum Aperol umsteigen." };
+    return { x: PARK.x + PARK.w / 2, y: PARK.y + PARK.h / 2, lab: "ZIEL", who: "Tipp", txt: "Alles gefunden! Jetzt ab zum orangen Zielfeld oben rechts." };
+  },
+  dir(x, y) {
+    const dx = x - this.L.x, dy = y - this.L.y;
+    if (Math.hypot(dx, dy) < 40) return "direkt neben dir";
+    const v = dy < -30 ? "oben" : dy > 30 ? "unten" : "", h = dx < -30 ? "links" : dx > 30 ? "rechts" : "";
+    return (v && h ? v + " " + h : v || h) + " von dir";
+  },
+  tip() {
+    const t = this.tipGoal();
+    this.tipTo = t;
+    this.tipT = 6;
+    sfx.plop && sfx.plop();
+    radio(t.who, t.txt);
+  },
+  key(e) {
+    if (e.key === "h" || e.key === "H") this.tip();
+  },
   down(x, y) {
+    if (x < 136 && y < 46) {
+      this.tipT = 0;
+      this.tip();
+      return;
+    }
     this.target = [x, y];
   },
   move(x, y) {
@@ -2621,6 +2667,76 @@ const COUP = {
       g.scale(0.9, 0.9);
       topHummi(0, 0, T * 0.3);
       g.restore();
+    }
+    if (this.tipT > 0 && this.tipTo) {
+      const t = this.tipTo, a0 = Math.atan2(t.y - this.L.y, t.x - this.L.x), d = Math.hypot(t.x - this.L.x, t.y - this.L.y), al = Math.min(1, this.tipT * 1.5), Y = "#ffd23f";
+      g.save();
+      g.globalAlpha = al;
+      g.lineCap = "round";
+      if (d > 44) {
+        g.strokeStyle = "rgba(0,0,0,.45)";
+        g.lineWidth = 9;
+        g.setLineDash([12, 9]);
+        g.lineDashOffset = -T * 40;
+        g.beginPath();
+        g.moveTo(this.L.x + Math.cos(a0) * 18, this.L.y + Math.sin(a0) * 18);
+        g.lineTo(t.x - Math.cos(a0) * 24, t.y - Math.sin(a0) * 24);
+        g.stroke();
+        g.strokeStyle = Y;
+        g.lineWidth = 5;
+        g.stroke();
+        g.setLineDash([]);
+        const ax = t.x - Math.cos(a0) * 20, ay = t.y - Math.sin(a0) * 20;
+        g.fillStyle = Y;
+        g.strokeStyle = "rgba(0,0,0,.5)";
+        g.lineWidth = 2;
+        g.beginPath();
+        g.moveTo(ax, ay);
+        g.lineTo(ax - Math.cos(a0 - 0.5) * 20, ay - Math.sin(a0 - 0.5) * 20);
+        g.lineTo(ax - Math.cos(a0 + 0.5) * 20, ay - Math.sin(a0 + 0.5) * 20);
+        g.closePath();
+        g.fill();
+        g.stroke();
+      }
+      const pr = 22 + Math.sin(T * 9) * 5;
+      g.strokeStyle = Y;
+      g.lineWidth = 5;
+      g.beginPath();
+      g.arc(t.x, t.y, pr, 0, 7);
+      g.stroke();
+      g.strokeStyle = "rgba(255,210,63,.45)";
+      g.lineWidth = 3;
+      g.beginPath();
+      g.arc(t.x, t.y, pr + 10, 0, 7);
+      g.stroke();
+      g.font = "900 12px Nunito,sans-serif";
+      const lw = g.measureText(t.lab).width + 20, lx = clamp(t.x, lw / 2 + 6, W - lw / 2 - 6), ly = t.y > 70 ? t.y - pr - 22 : t.y + pr + 22;
+      g.fillStyle = Y;
+      rr(lx - lw / 2, ly - 11, lw, 22, 11);
+      g.fill();
+      g.strokeStyle = "rgba(0,0,0,.5)";
+      g.lineWidth = 1.5;
+      g.stroke();
+      T_(t.lab, lx, ly + 0.5, 12, "#1d2a22", "center", false, 900);
+      g.restore();
+    }
+    {
+      const on = this.tipT <= 0, pu = on ? (Math.sin(T * 5) + 1) / 2 : 0;
+      g.save();
+      if (on) {
+        g.shadowColor = "rgba(255,210,63,.95)";
+        g.shadowBlur = 10 + pu * 14;
+      }
+      g.fillStyle = on ? "#ffd23f" : "rgba(14,34,25,.85)";
+      rr(6, 6, 128, 38, 19);
+      g.fill();
+      g.restore();
+      g.strokeStyle = on ? "#fff" : "rgba(255,210,63,.8)";
+      g.lineWidth = 2;
+      rr(6, 6, 128, 38, 19);
+      g.stroke();
+      T_(on ? "💡 TIPP" : "💡 Pfeil folgen", on ? 60 : 70, 26, on ? 17 : 12, on ? "#1d2a22" : "#ffd23f", "center", false, 900);
+      if (on) T_("H", 112, 26, 11, "rgba(29,42,34,.6)", "center", false, 900);
     }
     golfer(22, 478, { club: Math.sin(T * 5) * 1.6 - 1, s: 0.28 });
     if (this.sus > 20) {
